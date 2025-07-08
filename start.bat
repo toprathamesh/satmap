@@ -19,6 +19,6 @@ if not exist "models" mkdir models
 REM Run the application
 echo 🌟 Starting Flask application...
 cd backend
-python wsgi.py
+python app.py
 
 pause 
