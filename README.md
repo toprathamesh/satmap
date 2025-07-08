@@ -46,7 +46,7 @@ A web-based platform for robust change detection, monitoring, and alerting on us
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/toprathamesh/satmap.git
    cd satmap-2
    ```
 
