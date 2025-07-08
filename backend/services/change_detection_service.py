@@ -147,10 +147,11 @@ class ChangeDetectionService:
         self.model = None
         self.change_threshold = change_threshold  # Configurable threshold
         
-        # Image preprocessing transforms
+        # Image preprocessing transforms - using standard normalization
         self.transform = transforms.Compose([
             transforms.Resize((256, 256)),
             transforms.ToTensor(),
+            # Standard ImageNet normalization works well for preprocessed satellite imagery
             transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                                std=[0.229, 0.224, 0.225])
         ])
@@ -244,17 +245,17 @@ class ChangeDetectionService:
             before_img = Image.open(before_image_path).convert('RGB')
             after_img = Image.open(after_image_path).convert('RGB')
             
-            # Ensure both images have the same size
+            # Ensure both images have the same size for processing
             target_size = (512, 512)  # Standard size for processing
-            before_img = before_img.resize(target_size)
-            after_img = after_img.resize(target_size)
+            before_img_resized = before_img.resize(target_size)
+            after_img_resized = after_img.resize(target_size)
             
             # Store original size for final output
-            original_size = target_size
+            original_size = before_img.size
             
-            # Transform images
-            before_tensor = self.transform(before_img).unsqueeze(0).to(self.device)
-            after_tensor = self.transform(after_img).unsqueeze(0).to(self.device)
+            # Transform images for model
+            before_tensor = self.transform(before_img_resized).unsqueeze(0).to(self.device)
+            after_tensor = self.transform(after_img_resized).unsqueeze(0).to(self.device)
             
             # Generate result ID
             result_id = str(uuid.uuid4())
@@ -277,7 +278,7 @@ class ChangeDetectionService:
                                            original_size, 
                                            interpolation=cv2.INTER_NEAREST)
             
-            # Create visualizations
+            # Create visualizations using original images
             results = self._create_visualizations(
                 before_img, after_img, change_mask_resized, 
                 change_probs_np, result_id, original_size
@@ -441,63 +442,56 @@ class ChangeDetectionService:
             raise
     
     def _create_visualizations(self, before_img, after_img, change_mask, change_probs, result_id, original_size):
-        """Create comprehensive visualizations"""
+        """Create comprehensive visualizations with simple, robust processing"""
         
         # Convert PIL images to numpy arrays
         before_np = np.array(before_img)
         after_np = np.array(after_img)
         
-        # Resize probability map to original size
+        # Ensure proper data types
+        if before_np.dtype != np.uint8:
+            before_np = np.clip(before_np * 255, 0, 255).astype(np.uint8)
+        if after_np.dtype != np.uint8:
+            after_np = np.clip(after_np * 255, 0, 255).astype(np.uint8)
+        
+        # Resize probability map to match original image size
         change_probs_resized = cv2.resize(change_probs[1], original_size, interpolation=cv2.INTER_LINEAR)
         
-        # Create change overlay on after image with more prominent highlighting
-        after_with_changes = after_np.copy().astype(np.float32)
+        # Create change overlay on after image
+        after_with_changes = after_np.copy()
         
-        # Create a more visible change overlay
+        # Apply change highlighting
         change_locations = change_mask > 0
         if np.any(change_locations):
-            # Create red overlay with transparency
-            overlay = after_with_changes.copy()
-            overlay[change_locations] = [255, 0, 0]  # Pure red
-            
-            # Blend with original image (70% original, 30% overlay)
-            alpha = 0.7
-            after_highlighted = cv2.addWeighted(after_np.astype(np.float32), alpha, 
-                                              overlay, 1-alpha, 0).astype(np.uint8)
-        else:
-            after_highlighted = after_np.copy()
+            # Simple red overlay
+            after_with_changes[change_locations, 0] = np.minimum(
+                after_with_changes[change_locations, 0] + 100, 255)  # Add red
         
-        # Create side-by-side comparison with better layout
-        comparison_width = before_np.shape[1] * 2 + 30  # 30px spacing
-        comparison_height = before_np.shape[0] + 80     # 80px for labels and stats
+        # Create side-by-side comparison
+        comparison_width = before_np.shape[1] * 2 + 30
+        comparison_height = before_np.shape[0] + 80
         comparison = np.ones((comparison_height, comparison_width, 3), dtype=np.uint8) * 255
         
-        # Add images
+        # Add images to comparison
         y_offset = 40
         comparison[y_offset:y_offset+before_np.shape[0], 10:10+before_np.shape[1]] = before_np
-        comparison[y_offset:y_offset+after_np.shape[0], before_np.shape[1]+30:] = after_highlighted
+        comparison[y_offset:y_offset+after_np.shape[0], before_np.shape[1]+30:] = after_with_changes
         
-        # Add labels and statistics
+        # Add labels
         font = cv2.FONT_HERSHEY_SIMPLEX
-        font_scale = 0.7
-        thickness = 2
+        cv2.putText(comparison, 'BEFORE', (15, 30), font, 0.7, (0, 0, 0), 2)
+        cv2.putText(comparison, 'AFTER (Changes Highlighted)', (before_np.shape[1]+35, 30), font, 0.7, (0, 0, 0), 2)
         
-        # Labels
-        cv2.putText(comparison, 'BEFORE', (15, 30), font, font_scale, (0, 0, 0), thickness)
-        cv2.putText(comparison, 'AFTER (Changes in Red)', (before_np.shape[1]+35, 30), 
-                   font, font_scale, (0, 0, 0), thickness)
-        
-        # Statistics
+        # Add statistics
         change_percentage = (np.sum(change_mask > 0) / change_mask.size) * 100
-        stats_text = f'Change: {change_percentage:.2f}% | Threshold: {self.change_threshold}'
-        cv2.putText(comparison, stats_text, (15, comparison_height-15), 
-                   font, 0.6, (0, 0, 0), 1)
+        stats_text = f'Change: {change_percentage:.2f}%'
+        cv2.putText(comparison, stats_text, (15, comparison_height-15), font, 0.6, (0, 0, 0), 1)
         
-        # Create enhanced probability heatmap
+        # Create heatmap
         heatmap = cv2.applyColorMap((change_probs_resized * 255).astype(np.uint8), cv2.COLORMAP_JET)
         heatmap_rgb = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB)
         
-        # Save all visualizations
+        # Save all files
         base_path = f'images/results/{result_id}'
         
         before_path = f'{base_path}_before.png'
@@ -507,13 +501,17 @@ class ChangeDetectionService:
         heatmap_path = f'{base_path}_heatmap.png'
         change_mask_path = f'{base_path}_change_mask.png'
         
-        # Save files
-        Image.fromarray(before_np).save(before_path)
-        Image.fromarray(after_np).save(after_path)
-        Image.fromarray(after_highlighted.astype(np.uint8)).save(after_highlighted_path)
-        Image.fromarray(comparison).save(comparison_path)
-        Image.fromarray(heatmap_rgb).save(heatmap_path)
-        Image.fromarray((change_mask * 255).astype(np.uint8)).save(change_mask_path)
+        # Save with error handling
+        try:
+            Image.fromarray(before_np).save(before_path, 'PNG')
+            Image.fromarray(after_np).save(after_path, 'PNG')
+            Image.fromarray(after_with_changes).save(after_highlighted_path, 'PNG')
+            Image.fromarray(comparison).save(comparison_path, 'PNG')
+            Image.fromarray(heatmap_rgb).save(heatmap_path, 'PNG')
+            Image.fromarray((change_mask * 255).astype(np.uint8)).save(change_mask_path, 'PNG')
+        except Exception as e:
+            self.logger.error(f"Error saving images: {e}")
+            raise
         
         return {
             'files': {
@@ -523,7 +521,7 @@ class ChangeDetectionService:
                 'comparison': comparison_path,
                 'heatmap': heatmap_path,
                 'change_mask': change_mask_path,
-                'visualization': comparison_path  # Main visualization
+                'visualization': comparison_path
             }
         }
     

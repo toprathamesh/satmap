@@ -500,39 +500,44 @@ class GEEService:
             return self._export_raw_image_fallback(image, aoi, date)
     
     def _convert_raw_tiff_to_png(self, tiff_path, png_path):
-        """Convert RAW TIFF to PNG with minimal processing to preserve raw characteristics"""
+        """Convert RAW TIFF to PNG with robust satellite image processing"""
         try:
             import rasterio
             from PIL import Image
             
             with rasterio.open(tiff_path) as src:
                 # Read all bands (B4=Red, B3=Green, B2=Blue)
-                red = src.read(1).astype(np.float32)
-                green = src.read(2).astype(np.float32) 
-                blue = src.read(3).astype(np.float32)
+                red = src.read(1).astype(np.float64)
+                green = src.read(2).astype(np.float64) 
+                blue = src.read(3).astype(np.float64)
                 
-                # Minimal processing - only basic scaling for visibility
-                def raw_scale(band):
-                    # Remove any zero/negative values
-                    band = np.maximum(band, 0)
+                # Robust satellite image processing
+                def process_satellite_band(band):
+                    """Process a single satellite band with robust scaling"""
+                    # Handle invalid values
+                    band = np.nan_to_num(band, nan=0.0, posinf=1.0, neginf=0.0)
                     
-                    # Use 2nd and 98th percentiles for minimal contrast adjustment
-                    if np.max(band) > 0:
-                        p2, p98 = np.percentile(band[band > 0], [2, 98])
-                        # Gentle scaling to maintain raw characteristics
-                        band = np.clip((band - p2) / (p98 - p2), 0, 1)
+                    # Clip to valid reflectance range (0-1 for Sentinel-2 surface reflectance)
+                    band = np.clip(band, 0, 1)
                     
-                    return band
+                    # Apply gamma correction for better visualization
+                    band_gamma = np.power(band, 0.8)  # Slight gamma correction
+                    
+                    # Contrast enhancement using histogram equalization
+                    from skimage import exposure
+                    band_enhanced = exposure.equalize_hist(band_gamma)
+                    
+                    return band_enhanced
                 
-                # Apply minimal scaling to each band
-                red_scaled = raw_scale(red)
-                green_scaled = raw_scale(green)
-                blue_scaled = raw_scale(blue)
+                # Process each band
+                red_processed = process_satellite_band(red)
+                green_processed = process_satellite_band(green)
+                blue_processed = process_satellite_band(blue)
                 
-                # Convert to 8-bit for PNG (minimal processing)
-                red_8bit = (red_scaled * 255).astype(np.uint8)
-                green_8bit = (green_scaled * 255).astype(np.uint8)
-                blue_8bit = (blue_scaled * 255).astype(np.uint8)
+                # Convert to 8-bit
+                red_8bit = (red_processed * 255).astype(np.uint8)
+                green_8bit = (green_processed * 255).astype(np.uint8)
+                blue_8bit = (blue_processed * 255).astype(np.uint8)
                 
                 # Create RGB array
                 height, width = red_8bit.shape
@@ -541,14 +546,50 @@ class GEEService:
                 rgb_array[:, :, 1] = green_8bit
                 rgb_array[:, :, 2] = blue_8bit
                 
-                # Save as PNG (preserving raw characteristics)
+                # Save as PNG
                 image = Image.fromarray(rgb_array, mode='RGB')
-                image.save(png_path, 'PNG', optimize=False)  # No optimization to preserve raw data
+                image.save(png_path, 'PNG')
                 
-                self.logger.info(f"RAW TIFF converted to PNG: {png_path}")
+                self.logger.info(f"Enhanced satellite TIFF converted to PNG: {png_path}")
                 
         except Exception as e:
-            self.logger.error(f"Error converting RAW TIFF to PNG: {e}")
+            self.logger.error(f"Error converting TIFF to PNG: {e}")
+            # Fallback to simple conversion
+            self._simple_tiff_conversion(tiff_path, png_path)
+    
+    def _simple_tiff_conversion(self, tiff_path, png_path):
+        """Simple fallback TIFF to PNG conversion"""
+        try:
+            import rasterio
+            from PIL import Image
+            
+            with rasterio.open(tiff_path) as src:
+                # Read RGB bands
+                red = src.read(1).astype(np.float32)
+                green = src.read(2).astype(np.float32)
+                blue = src.read(3).astype(np.float32)
+                
+                # Simple scaling to 0-255
+                def simple_scale(band):
+                    band = np.nan_to_num(band, nan=0)
+                    band = np.clip(band, 0, 1)
+                    return (band * 255).astype(np.uint8)
+                
+                # Create RGB array
+                height, width = red.shape
+                rgb_array = np.zeros((height, width, 3), dtype=np.uint8)
+                rgb_array[:, :, 0] = simple_scale(red)
+                rgb_array[:, :, 1] = simple_scale(green)
+                rgb_array[:, :, 2] = simple_scale(blue)
+                
+                # Save as PNG
+                image = Image.fromarray(rgb_array, mode='RGB')
+                image.save(png_path, 'PNG')
+                
+                self.logger.info(f"Simple TIFF converted to PNG: {png_path}")
+                
+        except Exception as e:
+            self.logger.error(f"Simple TIFF conversion failed: {e}")
             raise
     
     def _export_raw_image_fallback(self, image, aoi, date):
