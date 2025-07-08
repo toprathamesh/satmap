@@ -1,0 +1,50 @@
+// Color Variables - Minimal Black & White Theme
+$color-primary: #000000;
+$color-secondary: #ffffff;
+$color-accent: #333333;
+$color-text: #000000;
+$color-text-light: #666666;
+$color-text-muted: #999999;
+$color-background: #ffffff;
+$color-background-light: #f8f8f8;
+$color-border: #e0e0e0;
+$color-border-light: #f0f0f0;
+
+// Spacing
+$spacing-xs: 0.25rem;
+$spacing-sm: 0.5rem;
+$spacing-md: 1rem;
+$spacing-lg: 1.5rem;
+$spacing-xl: 2rem;
+$spacing-xxl: 3rem;
+
+// Typography
+$font-family-base: 'Arial', 'Helvetica', sans-serif;
+$font-size-xs: 0.75rem;
+$font-size-sm: 0.875rem;
+$font-size-base: 1rem;
+$font-size-lg: 1.125rem;
+$font-size-xl: 1.25rem;
+$font-size-xxl: 1.5rem;
+$font-weight-light: 300;
+$font-weight-normal: 400;
+$font-weight-medium: 500;
+$font-weight-bold: 700;
+
+// Layout
+$container-max-width: 1200px;
+$border-radius: 0px; // Sharp edges for minimal design
+$border-width: 2px;
+$transition-base: 0.2s ease;
+
+// Components
+$card-padding: $spacing-lg;
+$button-padding: 0.75rem 1.5rem;
+$input-padding: 0.75rem;
+$map-height: 400px;
+
+// Breakpoints
+$breakpoint-sm: 576px;
+$breakpoint-md: 768px;
+$breakpoint-lg: 992px;
+$breakpoint-xl: 1200px; 

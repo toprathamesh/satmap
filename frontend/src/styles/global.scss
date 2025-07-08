@@ -1,0 +1,230 @@
+// Global styles for minimal black-and-white theme
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Arial', 'Helvetica', sans-serif;
+  background-color: #ffffff;
+  color: #000000;
+  line-height: 1.5;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  margin: 0 0 1rem 0;
+  font-weight: 300;
+  color: #000000;
+}
+
+p {
+  margin: 0 0 1rem 0;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 2rem;
+}
+
+// Button styles
+.btn {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  margin: 0.25rem;
+  border: 2px solid #000000;
+  background-color: #ffffff;
+  color: #000000;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
+  font-weight: 500;
+  
+  &:hover {
+    background-color: #000000;
+    color: #ffffff;
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    
+    &:hover {
+      background-color: #ffffff;
+      color: #000000;
+    }
+  }
+  
+  &.btn-primary {
+    background-color: #000000;
+    color: #ffffff;
+    
+    &:hover {
+      background-color: #333333;
+    }
+  }
+  
+  &.btn-small {
+    padding: 0.5rem 1rem;
+    font-size: 0.8rem;
+  }
+}
+
+// Input styles
+.input-group {
+  margin-bottom: 1rem;
+  
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #000000;
+  }
+  
+  input, select, textarea {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    background-color: #ffffff;
+    color: #000000;
+    font-size: 0.9rem;
+    transition: border-color 0.2s ease;
+    
+    &:focus {
+      outline: none;
+      border-color: #000000;
+    }
+    
+    &::placeholder {
+      color: #999999;
+    }
+  }
+}
+
+// Card styles
+.card {
+  background-color: #ffffff;
+  border: 2px solid #e0e0e0;
+  padding: 1.5rem;
+  margin-bottom: 1rem;
+  
+  .card-header {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e0e0e0;
+    
+    h3 {
+      margin: 0;
+      font-size: 1.2rem;
+    }
+  }
+  
+  .card-body {
+    margin-bottom: 1rem;
+  }
+  
+  .card-footer {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #e0e0e0;
+  }
+}
+
+// Layout utilities
+.row {
+  display: flex;
+  margin: 0 -1rem;
+  
+  .col {
+    flex: 1;
+    padding: 0 1rem;
+    
+    &.col-half {
+      flex: 0 0 50%;
+    }
+    
+    &.col-third {
+      flex: 0 0 33.333%;
+    }
+    
+    &.col-quarter {
+      flex: 0 0 25%;
+    }
+  }
+}
+
+// Map container
+.map-container {
+  height: 400px;
+  border: 2px solid #e0e0e0;
+  background-color: #f8f8f8;
+  position: relative;
+  
+  .ol-viewport {
+    border-radius: 0;
+  }
+}
+
+// Loading spinner
+.loading {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #e0e0e0;
+  border-radius: 50%;
+  border-top-color: #000000;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// Alert styles
+.alert {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border: 2px solid;
+  
+  &.alert-success {
+    background-color: #f8f8f8;
+    border-color: #000000;
+    color: #000000;
+  }
+  
+  &.alert-error {
+    background-color: #ffffff;
+    border-color: #000000;
+    color: #000000;
+  }
+  
+  &.alert-info {
+    background-color: #f8f8f8;
+    border-color: #666666;
+    color: #000000;
+  }
+}
+
+// Responsive design
+@media (max-width: 768px) {
+  .container {
+    padding: 0 1rem;
+  }
+  
+  .row {
+    flex-direction: column;
+    margin: 0;
+    
+    .col {
+      padding: 0.5rem 0;
+    }
+  }
+  
+  .map-container {
+    height: 300px;
+  }
+} 

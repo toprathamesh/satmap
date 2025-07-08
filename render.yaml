@@ -1,0 +1,39 @@
+version: 1
+
+services:
+  # Backend API Service
+  - type: web
+    name: change-detection-api
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: FLASK_DEBUG
+        value: false
+      - key: GEE_PROJECT_ID
+        sync: false  # Set this in Render dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: "https://change-detection-frontend.onrender.com"
+    healthCheckPath: /api/health
+    
+  # Frontend Service
+  - type: web
+    name: change-detection-frontend
+    runtime: docker
+    plan: starter
+    dockerfilePath: ./frontend/Dockerfile
+    dockerContext: ./frontend
+    envVars:
+      - key: VUE_APP_API_URL
+        value: "https://change-detection-api.onrender.com"
+
+databases:
+  # Optional: Add database if needed for storing results
+  # - name: change-detection-db
+  #   databaseName: changedetection
+  #   user: changedetection 
