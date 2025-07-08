@@ -1,0 +1,39 @@
+{
+  "result_id": "6fde97b0-8e30-412f-bce3-28c8e08cc094",
+  "timestamp": "2025-07-09T00:39:31.882358",
+  "model": "Fast No-Change Detection (Identical Dates)",
+  "threshold": 0.3,
+  "statistics": {
+    "change_percentage": 0.0,
+    "changed_area_km2": 0.0,
+    "total_area_km2": 1.0,
+    "num_change_regions": 0,
+    "largest_region_km2": 0.0,
+    "average_region_size_km2": 0.0,
+    "total_survey_area_km2": 1.0
+  },
+  "files": {
+    "before_image": null,
+    "after_image": null,
+    "after_highlighted": null,
+    "comparison": null,
+    "heatmap": null,
+    "change_mask": null,
+    "visualization": null
+  },
+  "metadata": {
+    "latitude": 19.0419252,
+    "longitude": 73.0270304,
+    "before_date": "2024-08-02",
+    "after_date": "2024-08-02",
+    "pixel_size_m": 10,
+    "gee_demo_mode": true
+  },
+  "coordinates": {
+    "lat": 19.0419252,
+    "lon": 73.0270304
+  },
+  "before_date": "2024-08-02",
+  "after_date": "2024-08-02",
+  "instant_result": true
+}

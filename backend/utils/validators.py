@@ -44,8 +44,8 @@ def validate_date_range(start_date: Optional[str], end_date: Optional[str]) -> b
         start_dt = datetime.strptime(start_date, '%Y-%m-%d')
         end_dt = datetime.strptime(end_date, '%Y-%m-%d')
         
-        # Check logical order
-        if start_dt >= end_dt:
+        # Check logical order - allow identical dates for testing
+        if start_dt > end_dt:
             return False
         
         # Allow reasonable date range (for demo and testing)

@@ -1,0 +1,51 @@
+{
+  "type": "FeatureCollection",
+  "properties": {
+    "title": "Change Detection Results",
+    "description": "Change detection between 2024-08-02 and 2024-08-02",
+    "center_coordinates": {
+      "lat": 19.0419252,
+      "lon": 73.0270304
+    },
+    "total_statistics": {
+      "change_percentage": 0.0,
+      "changed_area_km2": 0.0,
+      "total_area_km2": 1.0,
+      "num_change_regions": 0,
+      "largest_region_km2": 0.0,
+      "average_region_size_km2": 0.0,
+      "total_survey_area_km2": 1.0
+    },
+    "creation_date": "2025-07-09T00:39:31.882358",
+    "aoi_bounds": {
+      "left": 73.02253884412505,
+      "bottom": 19.037433644125045,
+      "right": 73.03152195587495,
+      "top": 19.046416755874958
+    },
+    "pixel_resolution": "512x512",
+    "coordinate_system": "WGS84"
+  },
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          73.02703,
+          19.041925
+        ]
+      },
+      "properties": {
+        "id": 1,
+        "area_pixels": 0,
+        "area_km2": 0.0,
+        "change_type": "no_change_detected",
+        "detection_date": "2025-07-09T00:39:31.882358",
+        "before_date": "2024-08-02",
+        "after_date": "2024-08-02",
+        "confidence": "high"
+      }
+    }
+  ]
+}

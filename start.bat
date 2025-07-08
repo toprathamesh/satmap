@@ -6,7 +6,7 @@ set FLASK_ENV=production
 set FLASK_DEBUG=false
 set DEVICE=cpu
 set PORT=5000
-set CORS_ORIGINS=http://localhost:8080,http://localhost:3000
+set CORS_ORIGINS=http://localhost:8080,http://localhost:8081,http://localhost:3000
 
 REM Create directories
 echo 📁 Creating necessary directories...

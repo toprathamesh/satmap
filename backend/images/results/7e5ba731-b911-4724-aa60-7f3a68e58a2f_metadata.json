@@ -1,0 +1,37 @@
+{
+  "result_id": "7e5ba731-b911-4724-aa60-7f3a68e58a2f",
+  "timestamp": "2025-07-09T02:57:48.368677",
+  "model": "Lightweight Siamese U-Net",
+  "threshold": 0.3,
+  "statistics": {
+    "change_percentage": 12.73,
+    "changed_area_km2": 3.336,
+    "total_area_km2": 26.2144,
+    "num_change_regions": 7323,
+    "largest_region_km2": 0.0232,
+    "average_region_size_km2": 0.0005
+  },
+  "files": {
+    "before_image": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_before.png",
+    "after_image": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_after.png",
+    "after_highlighted": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_after_highlighted.png",
+    "comparison": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_comparison.png",
+    "heatmap": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_heatmap.png",
+    "change_mask": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_change_mask.png",
+    "visualization": "images/results/7e5ba731-b911-4724-aa60-7f3a68e58a2f_comparison.png"
+  },
+  "metadata": {
+    "latitude": 19.04233898217798,
+    "longitude": 73.02756276454186,
+    "before_date": "2024-04-08",
+    "after_date": "2025-07-08",
+    "pixel_size_m": 10,
+    "gee_demo_mode": false
+  },
+  "coordinates": {
+    "lat": 19.04233898217798,
+    "lon": 73.02756276454186
+  },
+  "before_date": "2024-04-08",
+  "after_date": "2025-07-08"
+}

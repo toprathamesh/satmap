@@ -340,451 +340,243 @@ class GEEService:
         return ee.Geometry.Polygon(coords)
     
     def _fetch_sentinel2_image(self, aoi, date):
-        """Fetch ultra-high quality Sentinel-2 image using only 10m bands"""
+        """Fetch RAW Sentinel-2 image using only 10m bands with minimal processing"""
         try:
-            # Define date range (±30 days for optimal quality images)
+            # Define date range (±15 days for best temporal match)
             target_date = datetime.strptime(date, '%Y-%m-%d')
-            start_date = (target_date - timedelta(days=30)).strftime('%Y-%m-%d')
-            end_date = (target_date + timedelta(days=30)).strftime('%Y-%m-%d')
+            start_date = (target_date - timedelta(days=15)).strftime('%Y-%m-%d')
+            end_date = (target_date + timedelta(days=15)).strftime('%Y-%m-%d')
             
-            # Get Sentinel-2 collection with ULTRA-STRICT quality filters for crystal clear images
+            # Get Sentinel-2 collection with basic quality filters only
             collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                          .filterBounds(aoi)
                          .filterDate(start_date, end_date)
-                         .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 5))  # Ultra-strict cloud filter
-                         .filter(ee.Filter.lt('NODATA_PIXEL_PERCENTAGE', 5))  # Minimal missing data
-                         .filter(ee.Filter.gt('SUN_ELEVATION', 30))  # Good illumination
-                         .sort('CLOUDY_PIXEL_PERCENTAGE')
-                         .sort('system:time_start', False))  # Prefer newer images
+                         .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))  # Basic cloud filter
+                         .sort('system:time_start', False))  # Get most recent
             
-            # Check if any ultra-high-quality images are available
-            collection_size = collection.size()
-            size_info = collection_size.getInfo()
+            # Check if any images are available
+            collection_size = collection.size().getInfo()
             
-            if size_info == 0:
-                # Relax filters slightly but maintain high quality
-                self.logger.info("No ultra-high-quality images found, relaxing filters slightly...")
+            if collection_size == 0:
+                # Extend date range if needed
+                start_date = (target_date - timedelta(days=60)).strftime('%Y-%m-%d')
+                end_date = (target_date + timedelta(days=60)).strftime('%Y-%m-%d')
+                
                 collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                              .filterBounds(aoi)
                              .filterDate(start_date, end_date)
-                             .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 15))
-                             .filter(ee.Filter.lt('NODATA_PIXEL_PERCENTAGE', 10))
-                             .sort('CLOUDY_PIXEL_PERCENTAGE'))
+                             .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 50))  # Relaxed for availability
+                             .sort('system:time_start', False))
                 
-                size_info = collection.size().getInfo()
+                collection_size = collection.size().getInfo()
                 
-                if size_info == 0:
-                    # Extend date range if needed
-                    start_date = (target_date - timedelta(days=90)).strftime('%Y-%m-%d')
-                    end_date = (target_date + timedelta(days=90)).strftime('%Y-%m-%d')
-                    
-                    collection = (ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-                                 .filterBounds(aoi)
-                                 .filterDate(start_date, end_date)
-                                 .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 30))
-                                 .sort('CLOUDY_PIXEL_PERCENTAGE'))
-                    
-                    size_info = collection.size().getInfo()
-                    
-                    if size_info == 0:
-                        raise Exception("No suitable Sentinel-2 images found for this location and date range")
+                if collection_size == 0:
+                    raise Exception("No Sentinel-2 images found for this location and date range")
             
-            self.logger.info(f"Found {size_info} high-quality Sentinel-2 images for {date}")
+            self.logger.info(f"Found {collection_size} Sentinel-2 images for {date}")
             
-            # Get the best quality image
+            # Get the most recent image
             image = collection.first()
             
-            # Apply advanced cloud masking for crystal clear results
-            image = self._apply_advanced_cloud_mask(image)
+            # MINIMAL processing - only basic cloud mask and band selection
+            image = self._apply_basic_cloud_mask(image)
             
-            # Select ONLY 10m bands as requested: B2=Blue, B3=Green, B4=Red
+            # Select ONLY 10m bands: B2=Blue, B3=Green, B4=Red (RAW)
             rgb_image = image.select(['B4', 'B3', 'B2'])  # Red, Green, Blue order
             
-            # Apply ultra-high quality enhancement to match target image
-            rgb_image = self._enhance_to_target_quality(rgb_image)
+            # Convert surface reflectance to 0-1 range (minimal processing)
+            rgb_image = rgb_image.multiply(0.0001).clamp(0, 1)
             
             # Clip to AOI
             rgb_image = rgb_image.clip(aoi)
             
-            # Export image with maximum quality settings
-            temp_path = self._export_crystal_clear_image(rgb_image, aoi, date)
+            # Export RAW image with maximum resolution
+            temp_path = self._export_raw_image(rgb_image, aoi, date)
             
             return temp_path
             
         except Exception as e:
-            self.logger.error(f"Error fetching ultra-high quality Sentinel-2 image: {e}")
+            self.logger.error(f"Error fetching RAW Sentinel-2 image: {e}")
             raise
     
-    def _apply_advanced_cloud_mask(self, image):
-        """Apply advanced cloud masking for crystal clear satellite images"""
-        # Use QA60 band for cloud masking
+    def _apply_basic_cloud_mask(self, image):
+        """Apply minimal cloud masking to preserve raw data quality"""
+        # Use only QA60 band for basic cloud masking
         qa = image.select('QA60')
         
-        # Bits 10 and 11 are clouds and cirrus
+        # Bits 10 and 11 are clouds and cirrus (basic masking only)
         cloudBitMask = 1 << 10
         cirrusBitMask = 1 << 11
         
-        # Create comprehensive mask
+        # Create basic mask - only remove obvious clouds
         mask = qa.bitwiseAnd(cloudBitMask).eq(0).And(qa.bitwiseAnd(cirrusBitMask).eq(0))
-        
-        # Additional cloud shadow masking using SCL band if available
-        try:
-            scl = image.select('SCL')
-            # Mask out clouds (9), cloud shadows (3), and saturated/defective pixels (1)
-            scl_mask = scl.neq(1).And(scl.neq(3)).And(scl.neq(9)).And(scl.neq(8)).And(scl.neq(10))
-            mask = mask.And(scl_mask)
-        except:
-            pass  # SCL band might not be available in all collections
         
         return image.updateMask(mask)
     
-    def _enhance_to_target_quality(self, image):
-        """Enhance image to match target ultra-high quality with only 10m bands"""
-        # Convert surface reflectance values (scale from 0-10000 to 0-1)
-        image = image.multiply(0.0001)
-        
-        # Apply atmospheric correction enhancement
-        # Use 2% linear stretch for each band to maximize contrast
-        def enhance_band(band_image, band_name):
-            # Calculate percentiles for contrast stretching
-            percentiles = band_image.reduceRegion(**{
-                'reducer': ee.Reducer.percentile([1, 99]),
-                'scale': 10,
-                'maxPixels': 1e9,
-                'bestEffort': True
-            })
-            
-            # Get percentile values
-            p1 = ee.Number(percentiles.get(f'{band_name}_p1')).max(0.001)
-            p99 = ee.Number(percentiles.get(f'{band_name}_p99')).min(0.999)
-            
-            # Apply linear stretch
-            stretched = band_image.subtract(p1).divide(p99.subtract(p1)).clamp(0, 1)
-            
-            return stretched
-        
-        # Enhance each 10m band individually
-        b4_enhanced = enhance_band(image.select('B4'), 'B4')  # Red (10m)
-        b3_enhanced = enhance_band(image.select('B3'), 'B3')  # Green (10m)
-        b2_enhanced = enhance_band(image.select('B2'), 'B2')  # Blue (10m)
-        
-        # Combine enhanced bands
-        enhanced = ee.Image.cat([b4_enhanced, b3_enhanced, b2_enhanced]).rename(['B4', 'B3', 'B2'])
-        
-        # Apply subtle gamma correction for natural appearance
-        gamma = 1.2
-        enhanced = enhanced.pow(1.0/gamma)
-        
-        # Final contrast enhancement
-        enhanced = enhanced.multiply(1.1).clamp(0, 1)
-        
-        return enhanced
-    
-    def _export_crystal_clear_image(self, image, aoi, date):
-        """Export crystal clear image with maximum resolution within GEE limits"""
-        
-        # Test ultra-high resolutions focusing on 10m bands
-        # Start with highest quality and work down to stay under 50MB
-        resolutions = [2, 3, 5, 8, 10]  # Ultra-high to high resolution
-        
-        for scale in resolutions:
-            try:
-                self.logger.info(f"Testing {scale}m resolution for crystal clear quality (10m bands only)...")
-                
-                # Method 1: Try with region and scale (no dimensions)
-                try:
-                    url = image.getDownloadURL({
-                        'scale': scale,
-                        'crs': 'EPSG:4326', 
-                        'region': aoi,
-                        'format': 'GEO_TIFF',
-                        'filePerBand': False
-                    })
-                    
-                    # Check file size first
-                    head_response = requests.head(url, timeout=30)
-                    file_size = int(head_response.headers.get('content-length', 0))
-                    file_size_mb = file_size / (1024 * 1024)
-                    
-                    self.logger.info(f"Crystal clear image at {scale}m resolution: {file_size_mb:.1f} MB")
-                    
-                    if file_size_mb <= 45:  # Keep under 50MB limit
-                        # Download the crystal clear image
-                        self.logger.info(f"✅ Using {scale}m resolution ({file_size_mb:.1f} MB) for crystal clear quality")
-                        response = requests.get(url, timeout=180)
-                        response.raise_for_status()
-                        
-                        # Save to images file with clear naming
-                        temp_name = f"crystal_clear_{uuid.uuid4().hex[:8]}_{date}_{scale}m_10mbands.tif"
-                        temp_path = os.path.join('images/satellite', temp_name)
-                        
-                        with open(temp_path, 'wb') as f:
-                            f.write(response.content)
-                        
-                        # Convert to crystal clear PNG
-                        png_path = temp_path.replace('.tif', '.png')
-                        self._convert_to_crystal_clear_png(temp_path, png_path, scale)
-                        
-                        # Clean up TIFF file
-                        os.remove(temp_path)
-                        
-                        return png_path
-                        
-                    else:
-                        self.logger.info(f"❌ {scale}m resolution too large ({file_size_mb:.1f} MB), trying lower resolution...")
-                        continue
-                
-                except Exception as region_error:
-                    self.logger.info(f"Region method failed for {scale}m: {region_error}")
-                    
-                    # Method 2: Try with dimensions only (no region)
-                    try:
-                        # Calculate optimal dimensions based on scale and 1km AOI
-                        pixels_per_km = 1000 / scale  # pixels per kilometer
-                        max_dimension = min(int(pixels_per_km), 512)  # Cap at 512 for reasonable file size
-                        
-                        url = image.getDownloadURL({
-                            'scale': scale,
-                            'crs': 'EPSG:4326',
-                            'format': 'GEO_TIFF',
-                            'filePerBand': False,
-                            'dimensions': f'{max_dimension}x{max_dimension}'
-                        })
-                        
-                        # Check file size
-                        head_response = requests.head(url, timeout=30)
-                        file_size = int(head_response.headers.get('content-length', 0))
-                        file_size_mb = file_size / (1024 * 1024)
-                        
-                        self.logger.info(f"Crystal clear image at {scale}m resolution (dimensions method): {file_size_mb:.1f} MB")
-                        
-                        if file_size_mb <= 45:
-                            self.logger.info(f"✅ Using {scale}m resolution ({file_size_mb:.1f} MB) with dimensions method")
-                            response = requests.get(url, timeout=180)
-                            response.raise_for_status()
-                            
-                            # Save to images file
-                            temp_name = f"crystal_clear_{uuid.uuid4().hex[:8]}_{date}_{scale}m_10mbands.tif"
-                            temp_path = os.path.join('images/satellite', temp_name)
-                            
-                            with open(temp_path, 'wb') as f:
-                                f.write(response.content)
-                            
-                            # Convert to crystal clear PNG
-                            png_path = temp_path.replace('.tif', '.png')
-                            self._convert_to_crystal_clear_png(temp_path, png_path, scale)
-                            
-                            # Clean up TIFF file
-                            os.remove(temp_path)
-                            
-                            return png_path
-                        else:
-                            self.logger.info(f"❌ Dimensions method also too large, trying next resolution...")
-                            continue
-                            
-                    except Exception as dim_error:
-                        self.logger.warning(f"Both region and dimensions methods failed for {scale}m: {dim_error}")
-                        continue
-                     
-            except Exception as e:
-                self.logger.warning(f"Failed to export crystal clear image at {scale}m resolution: {e}")
-                continue
-        
-        # If all ultra-high resolutions fail, use enhanced standard export
-        self.logger.warning("Ultra-high quality export failed, using enhanced standard quality...")
-        return self._export_enhanced_standard_image(image, aoi, date)
-    
-    def _export_enhanced_standard_image(self, image, aoi, date):
-        """Enhanced standard export with good quality"""
+    def _export_raw_image(self, image, aoi, date):
+        """Export RAW satellite image at maximum resolution within GEE limits"""
         try:
-            url = image.getDownloadURL({
-                'scale': 10,  # Use native 10m resolution 
+            # Generate unique filename for raw image
+            unique_id = uuid.uuid4().hex[:8]
+            filename = f'raw_sentinel2_{unique_id}_{date}_10m_bands'
+            tiff_path = f'temp/gee_images/{filename}.tif'
+            png_path = f'images/satellite/{filename}.png'
+            
+            # Ensure directories exist
+            os.makedirs('temp/gee_images', exist_ok=True)
+            os.makedirs('images/satellite', exist_ok=True)
+            
+            # Get AOI bounds for maximum resolution calculation
+            bounds = aoi.bounds().getInfo()['coordinates'][0]
+            min_lon, max_lon = bounds[0][0], bounds[2][0] 
+            min_lat, max_lat = bounds[0][1], bounds[2][1]
+            
+            # Calculate optimal scale for maximum resolution within GEE limits
+            # Sentinel-2 10m bands native resolution is 10m
+            # GEE export limit is typically 100MB for getDownloadURL
+            optimal_scale = 10  # Use native 10m resolution for 10m bands
+            
+            # Calculate dimensions to check GEE limits
+            aoi_width_deg = max_lon - min_lon
+            aoi_height_deg = max_lat - min_lat
+            
+            # Convert to meters (approximate)
+            width_m = aoi_width_deg * 111320 * np.cos(np.radians((min_lat + max_lat) / 2))
+            height_m = aoi_height_deg * 111320
+            
+            # Calculate image dimensions at 10m resolution
+            width_pixels = int(width_m / optimal_scale)
+            height_pixels = int(height_m / optimal_scale)
+            total_pixels = width_pixels * height_pixels
+            
+            self.logger.info(f"Raw image dimensions: {width_pixels}x{height_pixels} pixels at {optimal_scale}m resolution")
+            
+            # If too large for GEE, use slightly lower resolution but maintain quality
+            max_pixels = 50000000  # Conservative limit for GEE
+            if total_pixels > max_pixels:
+                scale_factor = np.sqrt(total_pixels / max_pixels)
+                optimal_scale = optimal_scale * scale_factor
+                self.logger.info(f"Adjusted to {optimal_scale:.1f}m resolution to fit GEE limits")
+            
+            # Export parameters for RAW image
+            export_params = {
+                'image': image,
+                'description': filename,
+                'scale': optimal_scale,
+                'region': aoi,
+                'fileFormat': 'GeoTIFF',
+                'formatOptions': {
+                    'cloudOptimized': False  # Raw format
+                },
+                'maxPixels': max_pixels
+            }
+            
+            # Export using getDownloadURL for immediate processing
+            url = image.getDownloadUrl({
+                'scale': optimal_scale,
                 'crs': 'EPSG:4326',
                 'region': aoi,
                 'format': 'GEO_TIFF'
             })
             
-            response = requests.get(url, timeout=120)
+            # Download the raw image
+            self.logger.info(f"Downloading RAW Sentinel-2 image...")
+            response = requests.get(url)
             response.raise_for_status()
             
-            temp_name = f"enhanced_std_{uuid.uuid4().hex[:8]}_{date}_10m.tif"
-            temp_path = os.path.join('images/satellite', temp_name)
-            
-            with open(temp_path, 'wb') as f:
+            # Save raw TIFF
+            with open(tiff_path, 'wb') as f:
                 f.write(response.content)
             
-            png_path = temp_path.replace('.tif', '.png')
-            self._convert_to_crystal_clear_png(temp_path, png_path, 10)
+            # Convert to PNG with minimal processing (preserve raw characteristics)
+            self._convert_raw_tiff_to_png(tiff_path, png_path)
             
-            os.remove(temp_path)
+            self.logger.info(f"RAW Sentinel-2 image saved: {png_path}")
             return png_path
             
         except Exception as e:
-            self.logger.error(f"Enhanced standard export failed: {e}")
-            raise
+            self.logger.error(f"Error exporting RAW image: {e}")
+            # Fallback to simpler export
+            return self._export_raw_image_fallback(image, aoi, date)
     
-    def _convert_tiff_to_png(self, tiff_path, png_path):
-        """Convert GeoTIFF to PNG with proper scaling"""
-        import rasterio
-        from PIL import Image as PILImage
-        
+    def _convert_raw_tiff_to_png(self, tiff_path, png_path):
+        """Convert RAW TIFF to PNG with minimal processing to preserve raw characteristics"""
         try:
+            import rasterio
+            from PIL import Image
+            
             with rasterio.open(tiff_path) as src:
-                # Read RGB bands
-                red = src.read(1)
-                green = src.read(2) 
-                blue = src.read(3)
-                
-                # Stack and normalize
-                rgb = np.stack([red, green, blue], axis=-1)
-                
-                # Clip and scale to 0-255
-                rgb = np.clip(rgb * 255, 0, 255).astype(np.uint8)
-                
-                # Save as PNG
-                PILImage.fromarray(rgb).save(png_path)
-                
-        except Exception as e:
-            self.logger.error(f"Error converting TIFF to PNG: {e}")
-            # Fallback: create a simple conversion
-            try:
-                img = PILImage.open(tiff_path)
-                img.save(png_path)
-            except Exception as fallback_e:
-                self.logger.error(f"Fallback conversion also failed: {fallback_e}")
-                raise Exception("Failed to convert image format")
-    
-    def _export_ee_image(self, image, aoi, date):
-        """Export Earth Engine image to local file"""
-        try:
-            # Get download URL
-            url = image.getDownloadURL({
-                'scale': 10,  # 10m resolution
-                'crs': 'EPSG:4326',
-                'region': aoi,
-                'format': 'GEO_TIFF'
-            })
-            
-            # Download image
-            response = requests.get(url, timeout=60)
-            response.raise_for_status()
-            
-            # Save to images file
-            temp_name = f"gee_image_{uuid.uuid4().hex[:8]}_{date}.tif"
-            temp_path = os.path.join('images/satellite', temp_name)
-            
-            with open(temp_path, 'wb') as f:
-                f.write(response.content)
-            
-            # Convert to PNG for easier handling
-            png_path = temp_path.replace('.tif', '.png')
-            self._convert_tiff_to_png(temp_path, png_path)
-            
-            # Clean up TIFF file
-            os.remove(temp_path)
-            
-            return png_path
-            
-        except Exception as e:
-            self.logger.error(f"Error exporting EE image: {e}")
-            raise
-    
-    def _convert_tiff_to_png_hq(self, tiff_path, png_path, resolution):
-        """Convert GeoTIFF to high-quality PNG with advanced satellite image processing"""
-        import rasterio
-        from PIL import Image as PILImage
-        import numpy as np
-        from skimage import exposure, filters
-        
-        try:
-            with rasterio.open(tiff_path) as src:
-                self.logger.info(f"Processing {resolution}m resolution image: {src.width}x{src.height} pixels")
-                
-                # Read RGB bands
+                # Read all bands (B4=Red, B3=Green, B2=Blue)
                 red = src.read(1).astype(np.float32)
                 green = src.read(2).astype(np.float32) 
                 blue = src.read(3).astype(np.float32)
                 
-                # Handle NaN/NoData values
-                red = np.nan_to_num(red, nan=0.0, posinf=1.0, neginf=0.0)
-                green = np.nan_to_num(green, nan=0.0, posinf=1.0, neginf=0.0)
-                blue = np.nan_to_num(blue, nan=0.0, posinf=1.0, neginf=0.0)
+                # Minimal processing - only basic scaling for visibility
+                def raw_scale(band):
+                    # Remove any zero/negative values
+                    band = np.maximum(band, 0)
+                    
+                    # Use 2nd and 98th percentiles for minimal contrast adjustment
+                    if np.max(band) > 0:
+                        p2, p98 = np.percentile(band[band > 0], [2, 98])
+                        # Gentle scaling to maintain raw characteristics
+                        band = np.clip((band - p2) / (p98 - p2), 0, 1)
+                    
+                    return band
                 
-                # Apply advanced enhancement techniques
+                # Apply minimal scaling to each band
+                red_scaled = raw_scale(red)
+                green_scaled = raw_scale(green)
+                blue_scaled = raw_scale(blue)
                 
-                # 1. Adaptive histogram equalization for each band
-                red_eq = exposure.equalize_adapthist(red, clip_limit=0.03)
-                green_eq = exposure.equalize_adapthist(green, clip_limit=0.03)
-                blue_eq = exposure.equalize_adapthist(blue, clip_limit=0.03)
+                # Convert to 8-bit for PNG (minimal processing)
+                red_8bit = (red_scaled * 255).astype(np.uint8)
+                green_8bit = (green_scaled * 255).astype(np.uint8)
+                blue_8bit = (blue_scaled * 255).astype(np.uint8)
                 
-                # 2. Apply gentle gaussian filter to reduce noise
-                red_smooth = filters.gaussian(red_eq, sigma=0.5)
-                green_smooth = filters.gaussian(green_eq, sigma=0.5)
-                blue_smooth = filters.gaussian(blue_eq, sigma=0.5)
+                # Create RGB array
+                height, width = red_8bit.shape
+                rgb_array = np.zeros((height, width, 3), dtype=np.uint8)
+                rgb_array[:, :, 0] = red_8bit
+                rgb_array[:, :, 1] = green_8bit
+                rgb_array[:, :, 2] = blue_8bit
                 
-                # 3. Enhance contrast with gamma correction
-                gamma = 0.8  # Brighten the image
-                red_gamma = np.power(red_smooth, gamma)
-                green_gamma = np.power(green_smooth, gamma)
-                blue_gamma = np.power(blue_smooth, gamma)
+                # Save as PNG (preserving raw characteristics)
+                image = Image.fromarray(rgb_array, mode='RGB')
+                image.save(png_path, 'PNG', optimize=False)  # No optimization to preserve raw data
                 
-                # 4. Final scaling to 0-255 with robust percentile stretching
-                def robust_scale(band, lower=1, upper=99):
-                    p_low, p_high = np.percentile(band[band > 0], [lower, upper])
-                    band_scaled = np.clip((band - p_low) / (p_high - p_low), 0, 1)
-                    return (band_scaled * 255).astype(np.uint8)
-                
-                red_final = robust_scale(red_gamma)
-                green_final = robust_scale(green_gamma)
-                blue_final = robust_scale(blue_gamma)
-                
-                # Stack channels
-                rgb_enhanced = np.stack([red_final, green_final, blue_final], axis=-1)
-                
-                # Save as high-quality PNG
-                pil_image = PILImage.fromarray(rgb_enhanced)
-                pil_image.save(png_path, 'PNG', optimize=True, compress_level=6)
-                
-                self.logger.info(f"✅ High-quality PNG saved: {png_path}")
+                self.logger.info(f"RAW TIFF converted to PNG: {png_path}")
                 
         except Exception as e:
-            self.logger.error(f"Error in high-quality conversion: {e}")
-            # Fallback to basic conversion
-            try:
-                img = PILImage.open(tiff_path)
-                img.save(png_path)
-                self.logger.info("Used fallback PNG conversion")
-            except Exception as fallback_e:
-                self.logger.error(f"Fallback conversion failed: {fallback_e}")
-                raise Exception("Failed to convert image format")
+            self.logger.error(f"Error converting RAW TIFF to PNG: {e}")
+            raise
     
-    def _export_ee_image_fallback(self, image, aoi, date):
-        """Fallback export method if high-quality export fails"""
+    def _export_raw_image_fallback(self, image, aoi, date):
+        """Fallback method for RAW image export if main method fails"""
         try:
-            url = image.getDownloadURL({
-                'scale': 20,  # Conservative resolution
+            unique_id = uuid.uuid4().hex[:8]
+            filename = f'raw_fallback_{unique_id}_{date}_10m.png'
+            png_path = f'images/satellite/{filename}'
+            
+            # Simple export with basic parameters
+            url = image.getDownloadUrl({
+                'scale': 10,  # Native 10m resolution
                 'crs': 'EPSG:4326',
                 'region': aoi,
-                'format': 'GEO_TIFF'
+                'format': 'PNG'
             })
             
-            response = requests.get(url, timeout=90)
+            response = requests.get(url)
             response.raise_for_status()
             
-            temp_name = f"gee_fallback_{uuid.uuid4().hex[:8]}_{date}.tif"
-            temp_path = os.path.join('images/satellite', temp_name)
-            
-            with open(temp_path, 'wb') as f:
+            with open(png_path, 'wb') as f:
                 f.write(response.content)
             
-            png_path = temp_path.replace('.tif', '.png')
-            self._convert_tiff_to_png_hq(temp_path, png_path, 20)
-            
-            os.remove(temp_path)
+            self.logger.info(f"RAW fallback image saved: {png_path}")
             return png_path
             
         except Exception as e:
-            self.logger.error(f"Fallback export failed: {e}")
+            self.logger.error(f"RAW fallback export failed: {e}")
             raise
     
     def get_imagery(self, lat, lon, start_date, end_date):

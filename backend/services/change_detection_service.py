@@ -232,6 +232,14 @@ class ChangeDetectionService:
             Dictionary with change detection results
         """
         try:
+            # Check if dates are identical - no change detection needed
+            if metadata:
+                before_date = metadata.get('before_date', '')
+                after_date = metadata.get('after_date', '')
+                if before_date == after_date and before_date:
+                    self.logger.info(f"Identical dates detected ({before_date}), returning no change result")
+                    return self._create_no_change_result(before_image_path, after_image_path, metadata)
+            
             # Load and preprocess images
             before_img = Image.open(before_image_path).convert('RGB')
             after_img = Image.open(after_image_path).convert('RGB')
@@ -286,7 +294,13 @@ class ChangeDetectionService:
                 'threshold': self.change_threshold,
                 'statistics': statistics,
                 'files': results['files'],
-                'metadata': metadata or {}
+                'metadata': metadata or {},
+                'coordinates': {
+                    'lat': metadata.get('latitude', 0) if metadata else 0,
+                    'lon': metadata.get('longitude', 0) if metadata else 0
+                },
+                'before_date': metadata.get('before_date', '') if metadata else '',
+                'after_date': metadata.get('after_date', '') if metadata else ''
             }
             
             # Save metadata
@@ -298,6 +312,132 @@ class ChangeDetectionService:
             
         except Exception as e:
             self.logger.error(f"Error in change detection: {str(e)}")
+            raise
+    
+    def _create_no_change_result(self, before_image_path, after_image_path, metadata):
+        """Create a no-change result for identical dates"""
+        try:
+            # Load images
+            before_img = Image.open(before_image_path).convert('RGB')
+            after_img = Image.open(after_image_path).convert('RGB')
+            
+            # Ensure same size
+            target_size = (512, 512)
+            before_img = before_img.resize(target_size)
+            after_img = after_img.resize(target_size)
+            
+            # Generate result ID
+            result_id = str(uuid.uuid4())
+            
+            # Create empty change mask (no changes)
+            change_mask = np.zeros(target_size, dtype=np.uint8)
+            change_probs = np.zeros((2, target_size[0], target_size[1]), dtype=np.float32)
+            change_probs[0] = 1.0  # All pixels are "no change"
+            
+            # Create visualizations with no changes
+            results = self._create_visualizations(
+                before_img, after_img, change_mask, 
+                change_probs, result_id, target_size
+            )
+            
+            # Calculate statistics (should be zero changes)
+            statistics = self._calculate_statistics(change_mask, metadata)
+            
+            # Override statistics to ensure zero change
+            statistics.update({
+                'change_percentage': 0.0,
+                'changed_area_km2': 0.0,
+                'num_change_regions': 0,
+                'largest_region_km2': 0.0,
+                'average_region_size_km2': 0.0,
+                'total_survey_area_km2': statistics.get('total_survey_area_km2', 1.0)
+            })
+            
+            # Save results
+            result_data = {
+                'result_id': result_id,
+                'timestamp': datetime.now().isoformat(),
+                'model': 'Lightweight Siamese U-Net (No Change - Identical Dates)',
+                'threshold': self.change_threshold,
+                'statistics': statistics,
+                'files': results['files'],
+                'metadata': metadata or {},
+                'coordinates': {
+                    'lat': metadata.get('latitude', 0) if metadata else 0,
+                    'lon': metadata.get('longitude', 0) if metadata else 0
+                },
+                'before_date': metadata.get('before_date', '') if metadata else '',
+                'after_date': metadata.get('after_date', '') if metadata else ''
+            }
+            
+            # Save metadata
+            metadata_path = f'images/results/{result_id}_metadata.json'
+            with open(metadata_path, 'w') as f:
+                json.dump(result_data, f, indent=2)
+            
+            self.logger.info(f"No-change result created for identical dates: {result_id}")
+            return result_data
+            
+        except Exception as e:
+            self.logger.error(f"Error creating no-change result: {str(e)}")
+            raise
+    
+    def create_instant_no_change_result(self, metadata):
+        """Create an instant no-change result without loading any images (for identical dates)"""
+        try:
+            # Generate result ID
+            result_id = str(uuid.uuid4())
+            
+            # Create minimal statistics for no change
+            statistics = {
+                'change_percentage': 0.0,
+                'changed_area_km2': 0.0,
+                'total_area_km2': 1.0,  # 1 km² AOI
+                'num_change_regions': 0,
+                'largest_region_km2': 0.0,
+                'average_region_size_km2': 0.0,
+                'total_survey_area_km2': 1.0
+            }
+            
+            # Create minimal file structure (no actual files created for instant result)
+            files = {
+                'before_image': None,
+                'after_image': None,
+                'after_highlighted': None,
+                'comparison': None,
+                'heatmap': None,
+                'change_mask': None,
+                'visualization': None
+            }
+            
+            # Create result data
+            result_data = {
+                'result_id': result_id,
+                'timestamp': datetime.now().isoformat(),
+                'model': 'Fast No-Change Detection (Identical Dates)',
+                'threshold': self.change_threshold,
+                'statistics': statistics,
+                'files': files,
+                'metadata': metadata or {},
+                'coordinates': {
+                    'lat': metadata.get('latitude', 0) if metadata else 0,
+                    'lon': metadata.get('longitude', 0) if metadata else 0
+                },
+                'before_date': metadata.get('before_date', '') if metadata else '',
+                'after_date': metadata.get('after_date', '') if metadata else '',
+                'instant_result': True  # Flag to indicate this was instant
+            }
+            
+            # Save minimal metadata
+            metadata_path = f'images/results/{result_id}_metadata.json'
+            with open(metadata_path, 'w') as f:
+                json.dump(result_data, f, indent=2)
+            
+            self.logger.info(f"Instant no-change result created: {result_id}")
+            return result_data
+            
+        except Exception as e:
+            self.logger.error(f"Error creating instant no-change result: {str(e)}")
             raise
     
     def _create_visualizations(self, before_img, after_img, change_mask, change_probs, result_id, original_size):

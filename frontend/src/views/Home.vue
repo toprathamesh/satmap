@@ -1,17 +1,45 @@
 <template>
   <div class="home">
     <div class="container">
-      <div class="row">
-        <!-- Left Panel - Map and Controls -->
-        <div class="col col-half">
-          <div class="card">
-            <div class="card-header">
-              <h3>Area of Interest Selection</h3>
+      <!-- Main Content - Centered -->
+      <div class="main-content">
+        <!-- Area Selection Card - Centered -->
+        <div class="selection-card">
+          <div class="card-header">
+            <h2>Area of Interest Selection</h2>
+          </div>
+          
+          <div class="card-body">
+            <!-- Manual Coordinates First -->
+            <div class="coordinates-row">
+              <div class="coordinate-input">
+                <label for="latitude">Latitude</label>
+                <input
+                  id="latitude"
+                  v-model.number="coordinates.lat"
+                  type="number"
+                  step="0.000001"
+                  placeholder="19.0419252"
+                  @change="updateMapCenter"
+                />
+              </div>
+              <div class="coordinate-input">
+                <label for="longitude">Longitude</label>
+                <input
+                  id="longitude"
+                  v-model.number="coordinates.lon"
+                  type="number"
+                  step="0.000001"
+                  placeholder="73.0270304"
+                  @change="updateMapCenter"
+                />
+              </div>
             </div>
-            <div class="card-body">
-              <!-- Google Maps URL Input -->
-              <div class="input-group">
-                <label for="gmaps-url">Google Maps Link (Optional)</label>
+            
+            <!-- Google Maps URL Input - Moved After Coordinates -->
+            <div class="input-section">
+              <label for="gmaps-url">Google Maps Link (Optional)</label>
+              <div class="input-with-button">
                 <input
                   id="gmaps-url"
                   v-model="gmapsUrl"
@@ -19,219 +47,118 @@
                   placeholder="Paste Google Maps URL here..."
                   @blur="parseGoogleMapsUrl"
                 />
-                <button @click="parseGoogleMapsUrl" class="btn btn-small">Parse URL</button>
+                <button @click="parseGoogleMapsUrl" class="btn btn-secondary">Parse</button>
               </div>
-              
-              <!-- Manual Coordinates -->
-              <div class="row">
-                <div class="col">
-                  <div class="input-group">
-                    <label for="latitude">Latitude</label>
-                    <input
-                      id="latitude"
-                      v-model.number="coordinates.lat"
-                      type="number"
-                      step="0.000001"
-                      placeholder="19.0419252"
-                      @change="updateMapCenter"
-                    />
-                  </div>
-                </div>
-                <div class="col">
-                  <div class="input-group">
-                    <label for="longitude">Longitude</label>
-                    <input
-                      id="longitude"
-                      v-model.number="coordinates.lon"
-                      type="number"
-                      step="0.000001"
-                      placeholder="73.0270304"
-                      @change="updateMapCenter"
-                    />
-                  </div>
-                </div>
-              </div>
-              
-              <!-- Map Container -->
+            </div>
+            
+            <!-- Map Container -->
+            <div class="map-section">
               <div id="map" class="map-container"></div>
-              
-              <!-- Date Selection -->
-              <div class="row">
-                <div class="col">
-                  <div class="input-group">
-                    <label for="before-date">Before Date</label>
-                    <input
-                      id="before-date"
-                      v-model="dates.before"
-                      type="date"
-                      :max="dates.after"
-                    />
-                  </div>
-                </div>
-                <div class="col">
-                  <div class="input-group">
-                    <label for="after-date">After Date</label>
-                    <input
-                      id="after-date"
-                      v-model="dates.after"
-                      type="date"
-                      :min="dates.before"
-                      :max="maxDate"
-                    />
-                  </div>
-                </div>
+            </div>
+            
+            <!-- Date Selection -->
+            <div class="dates-row">
+              <div class="date-input">
+                <label for="before-date">Before Date</label>
+                <input
+                  id="before-date"
+                  v-model="dates.before"
+                  type="date"
+                  :max="dates.after"
+                />
               </div>
-              
-              <!-- Action Buttons -->
-              <div class="card-footer">
-                <button
-                  @click="detectChanges"
-                  :disabled="!canDetectChanges || loading"
-                  class="btn btn-primary"
-                >
-                  <span v-if="loading" class="loading"></span>
-                  Detect Changes
-                </button>
-                <button
-                  @click="loadSurveyData"
-                  :disabled="!coordinates.lat || !coordinates.lon || loading"
-                  class="btn"
-                >
-                  Load Survey Data
-                </button>
+              <div class="date-input">
+                <label for="after-date">After Date</label>
+                <input
+                  id="after-date"
+                  v-model="dates.after"
+                  type="date"
+                  :min="dates.before"
+                  :max="maxDate"
+                />
               </div>
+            </div>
+            
+            <!-- Action Button - Centered -->
+            <div class="action-buttons">
+              <button
+                @click="detectChanges"
+                :disabled="!canDetectChanges || loading"
+                class="btn btn-primary"
+              >
+                <span v-if="loading" class="loading"></span>
+                <span v-if="!loading">Detect Changes</span>
+                <span v-if="loading">Processing...</span>
+              </button>
             </div>
           </div>
         </div>
-        
-        <!-- Right Panel - Survey Data and Results -->
-        <div class="col col-half">
-          <!-- Survey Data Panel -->
-          <div class="card" v-if="surveyData.length > 0">
-            <div class="card-header">
-              <h3>Available Survey Data</h3>
+
+        <!-- Results Section - Below Selection -->
+        <div v-if="results && !loading" class="results-section">
+          <div class="card-header">
+            <h2>Change Detection Results</h2>
+          </div>
+          
+          <!-- Statistics Summary -->
+          <div class="stats-summary">
+            <div class="stat-card primary">
+              <div class="stat-label">Change Detected</div>
+              <div class="stat-value">{{ results.statistics?.change_percentage?.toFixed(1) || '0' }}%</div>
             </div>
-            <div class="card-body">
-              <div class="survey-list">
-                <div
-                  v-for="item in surveyData"
-                  :key="item.date"
-                  class="survey-item"
-                  @click="selectSurveyDate(item.date)"
-                  :class="{ selected: selectedSurveyDate === item.date }"
-                >
-                  <div class="survey-date">{{ formatDate(item.date) }}</div>
-                  <div class="survey-info">
-                    <span>{{ item.satellite }}</span>
-                    <span class="cloud-cover">{{ item.cloud_cover }}% clouds</span>
-                  </div>
-                </div>
-              </div>
+            <div class="stat-card">
+              <div class="stat-label">Model Used</div>
+              <div class="stat-value">{{ results.model || 'Lightweight Siamese U-Net' }}</div>
             </div>
           </div>
           
-          <!-- Change Detection Results -->
-          <div class="card" v-if="changeResults">
-            <div class="card-header">
-              <h3>Change Detection Results</h3>
-            </div>
-            <div class="card-body">
-              <!-- Statistics -->
-              <div class="stats-grid">
-                <div class="stat-item">
-                  <div class="stat-value">{{ changeResults.statistics.change_percentage }}%</div>
-                  <div class="stat-label">Area Changed</div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-value">{{ changeResults.statistics.changed_area_km2 }}</div>
-                  <div class="stat-label">km² Changed</div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-value">{{ changeResults.statistics.num_change_regions }}</div>
-                  <div class="stat-label">Change Regions</div>
-                </div>
-                <div class="stat-item">
-                  <div class="stat-value">{{ changeResults.statistics.largest_region_km2 }}</div>
-                  <div class="stat-label">Largest Region (km²)</div>
-                </div>
+          <!-- Image Results Grid -->
+          <div class="image-results">
+            <div class="image-grid">
+              <div class="image-item">
+                <h3>Before Image</h3>
+                <img v-if="results.files?.before_image" :src="getImageUrl(results.files.before_image)" alt="Before" class="result-image">
+                <div v-else class="no-image">No before image available</div>
               </div>
               
-              <!-- Image Comparison View -->
-              <div class="image-comparison-section" v-if="changeResults.files">
-                <!-- Before/After Images Side by Side -->
-                <div class="before-after-grid" v-if="changeResults.files.before_image && changeResults.files.after_highlighted">
-                  <div class="image-container">
-                    <h4>Before</h4>
-                    <img
-                      :src="getVisualizationUrl(changeResults.files.before_image)"
-                      alt="Before Image"
-                      class="comparison-image"
-                    />
-                    <p class="image-date">{{ formatDate(dates.before) }}</p>
-                  </div>
-                  <div class="image-container">
-                    <h4>After (Changes Highlighted)</h4>
-                    <img
-                      :src="getVisualizationUrl(changeResults.files.after_highlighted)"
-                      alt="After Image with Changes"
-                      class="comparison-image"
-                    />
-                    <p class="image-date">{{ formatDate(dates.after) }}</p>
-                  </div>
-                </div>
-                
-                <!-- Full Comparison View -->
-                <div class="full-comparison" v-if="changeResults.files.comparison">
-                  <h4>Side-by-Side Comparison</h4>
-                  <img
-                    :src="getVisualizationUrl(changeResults.files.comparison)"
-                    alt="Before/After Comparison"
-                    class="full-comparison-image"
-                  />
-                </div>
-                
-                <!-- Change Probability Heatmap -->
-                <div class="heatmap-section" v-if="changeResults.files.heatmap">
-                  <h4>Change Probability Heatmap</h4>
-                  <img
-                    :src="getVisualizationUrl(changeResults.files.heatmap)"
-                    alt="Change Probability Heatmap"
-                    class="heatmap-image"
-                  />
-                  <p class="heatmap-legend">
-                    <span class="legend-item blue">Low Probability</span>
-                    <span class="legend-item green">Medium Probability</span>
-                    <span class="legend-item red">High Probability</span>
-                  </p>
-                </div>
-                
-                <!-- Additional Stats -->
-                <div class="additional-stats" v-if="changeResults.statistics.average_region_size_km2">
-                  <div class="stat-row">
-                    <span class="stat-name">Average Region Size:</span>
-                    <span class="stat-value">{{ changeResults.statistics.average_region_size_km2 }} km²</span>
-                  </div>
-                  <div class="stat-row">
-                    <span class="stat-name">Total Survey Area:</span>
-                    <span class="stat-value">{{ changeResults.statistics.total_area_km2 }} km²</span>
-                  </div>
-                </div>
+              <div class="image-item">
+                <h3>After Image</h3>
+                <img v-if="results.files?.after_image" :src="getImageUrl(results.files.after_image)" alt="After" class="result-image">
+                <div v-else class="no-image">No after image available</div>
               </div>
               
-              <!-- Export Options -->
-              <div class="card-footer">
-                <button @click="exportResults('geotiff')" class="btn btn-small">Export GeoTIFF</button>
-                <button @click="exportResults('geojson')" class="btn btn-small">Export GeoJSON</button>
-                <button @click="exportResults('shapefile')" class="btn btn-small">Export Shapefile</button>
-                <button @click="exportResults('complete')" class="btn">Complete Package</button>
+              <div class="image-item">
+                <h3>Change Comparison</h3>
+                <img v-if="results.files?.comparison" :src="getImageUrl(results.files.comparison)" alt="Comparison" class="result-image">
+                <div v-else class="no-image">No comparison image available</div>
+              </div>
+              
+              <div class="image-item">
+                <h3>Change Heatmap</h3>
+                <img v-if="results.files?.heatmap" :src="getImageUrl(results.files.heatmap)" alt="Heatmap" class="result-image">
+                <div v-else class="no-image">No heatmap available</div>
               </div>
             </div>
           </div>
-          
-          <!-- Error Display -->
-          <div class="alert alert-error" v-if="error">
-            {{ error }}
+
+          <!-- Export Options (PDF Only) -->
+          <div class="export-section">
+            <h2>Export Results</h2>
+            <button @click="exportPDF" :disabled="exporting" class="btn btn-export">
+              <span class="icon">📄</span>
+              <span v-if="exporting" class="loading"></span>
+              <span v-if="!exporting">Download PDF Report</span>
+              <span v-if="exporting">Generating PDF...</span>
+            </button>
+            <div v-if="showExportMessage" class="alert alert-success">
+              {{ exportMessage }}
+            </div>
           </div>
+        </div>
+
+        <!-- Error Display -->
+        <div class="alert alert-error" v-if="error">
+          {{ error }}
         </div>
       </div>
     </div>
@@ -267,13 +194,15 @@ export default {
         after: ''
       },
       gmapsUrl: '',
-      surveyData: [],
-      selectedSurveyDate: null,
       changeResults: null,
       loading: false,
       error: null,
       aoiLayer: null,
-      centerLayer: null
+      centerLayer: null,
+      exporting: false,
+      showExportMessage: false,
+      exportMessage: '',
+      results: null
     }
   },
   computed: {
@@ -413,32 +342,7 @@ export default {
       }
     },
     
-    async loadSurveyData() {
-      this.loading = true
-      this.error = null
-      
-      try {
-        // Use a date range around the selected dates
-        const startDate = this.dates.before || '2020-01-01'
-        const endDate = this.dates.after || new Date().toISOString().split('T')[0]
-        
-        const response = await axios.post(`${this.apiBaseUrl}/api/survey-data`, {
-          latitude: this.coordinates.lat,
-          longitude: this.coordinates.lon,
-          start_date: startDate,
-          end_date: endDate
-        })
-        
-        if (response.data.success) {
-          this.surveyData = response.data.data
-        }
-      } catch (error) {
-        this.error = 'Failed to load survey data'
-        console.error('Error loading survey data:', error)
-      } finally {
-        this.loading = false
-      }
-    },
+
     
     async detectChanges() {
       this.loading = true
@@ -455,6 +359,7 @@ export default {
         
         if (response.data.success) {
           this.changeResults = response.data.data
+          this.results = this.changeResults // Assign results to the new state
         }
       } catch (error) {
         this.error = 'Change detection failed: ' + (error.response?.data?.error || error.message)
@@ -464,56 +369,73 @@ export default {
       }
     },
     
-    async exportResults(format) {
-      if (!this.changeResults) return
+
+    
+
+    
+    async exportPDF() {
+      if (!this.results) return;
       
+      this.exporting = true;
       try {
-        const exportFormat = format === 'complete' ? 'complete_package' : format
-        const response = await axios.post(`${this.apiBaseUrl}/api/export`, {
-          result_id: this.changeResults.result_id,
-          format: exportFormat
+        const response = await axios.post('http://localhost:5000/api/export/pdf', {
+          result_id: this.results.result_id
         }, {
           responseType: 'blob'
-        })
+        });
+        
+        // Check if we received a PDF or an error
+        if (response.headers['content-type'] === 'application/json') {
+          // This means we got an error response as JSON
+          const errorText = await response.data.text();
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || 'PDF generation failed');
+        }
         
         // Create download link
-        const url = window.URL.createObjectURL(new Blob([response.data]))
-        const link = document.createElement('a')
-        link.href = url
+        const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `${this.results.result_id}_report.pdf`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
         
-        const extension = format === 'geotiff' ? 'tif' : 
-                         format === 'geojson' ? 'geojson' :
-                         format === 'shapefile' ? 'zip' : 'zip'
-        
-        link.setAttribute('download', `change_detection_${this.changeResults.result_id}.${extension}`)
-        document.body.appendChild(link)
-        link.click()
-        link.remove()
-        window.URL.revokeObjectURL(url)
+        this.exportMessage = 'PDF report downloaded successfully!';
+        this.showExportMessage = true;
+        setTimeout(() => { this.showExportMessage = false; }, 3000);
         
       } catch (error) {
-        this.error = 'Export failed: ' + (error.response?.data?.error || error.message)
-        console.error('Error exporting:', error)
-      }
-    },
-    
-    selectSurveyDate(date) {
-      this.selectedSurveyDate = date
-      // Auto-fill date if appropriate
-      if (!this.dates.before) {
-        this.dates.before = date
-      } else if (!this.dates.after && date > this.dates.before) {
-        this.dates.after = date
+        console.error('Error exporting PDF:', error);
+        let errorMessage = 'Failed to generate PDF report';
+        
+        if (error.response) {
+          // Handle different error types
+          if (error.response.status === 500) {
+            errorMessage = 'Server error generating PDF. Please try again.';
+          } else if (error.response.data && error.response.data.error) {
+            errorMessage = error.response.data.error;
+          }
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+        
+        this.exportMessage = errorMessage;
+        this.showExportMessage = true;
+        setTimeout(() => { this.showExportMessage = false; }, 5000);
+      } finally {
+        this.exporting = false;
       }
     },
     
     setDefaultDates() {
       const today = new Date()
-      const sixMonthsAgo = new Date()
-      sixMonthsAgo.setMonth(today.getMonth() - 6)
+      const oneYearAgo = new Date()
+      oneYearAgo.setFullYear(today.getFullYear() - 1)
       
       this.dates.after = today.toISOString().split('T')[0]
-      this.dates.before = sixMonthsAgo.toISOString().split('T')[0]
+      this.dates.before = oneYearAgo.toISOString().split('T')[0]
     },
     
     formatDate(dateString) {
@@ -522,226 +444,365 @@ export default {
     
     getVisualizationUrl(path) {
       return `${this.apiBaseUrl}/${path.replace(/^\//, '')}`
+    },
+    
+    getImageUrl(imagePath) {
+      // Fix image URL to use proper backend serving
+      if (!imagePath) return '';
+      
+      // Remove 'images/' prefix if it exists since we're serving from root
+      const cleanPath = imagePath.replace(/^(backend\/)?images\//, '');
+      return `http://localhost:5000/images/${cleanPath}`;
     }
   }
 }
 </script>
 
 <style lang="scss" scoped>
-.survey-list {
-  max-height: 300px;
-  overflow-y: auto;
-  border: 1px solid #e0e0e0;
+.home {
+  min-height: 100vh;
+  padding: 1rem 0;
+  background-color: #ffffff;
 }
 
-.survey-item {
-  padding: 0.75rem;
-  border-bottom: 1px solid #f0f0f0;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-  
-  &:hover {
-    background-color: #f8f8f8;
-  }
-  
-  &.selected {
-    background-color: #000000;
-    color: #ffffff;
-  }
-  
-  .survey-date {
-    font-weight: 500;
-    margin-bottom: 0.25rem;
-  }
-  
-  .survey-info {
-    font-size: 0.8rem;
-    opacity: 0.8;
-    
-    span {
-      margin-right: 1rem;
-    }
-  }
+
+
+/* Main Content Container */
+.main-content {
+  max-width: 900px;
+  margin: 1rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
 }
 
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 1rem;
-  margin-bottom: 1rem;
+/* Card Styles */
+.selection-card,
+.results-section {
+  background-color: #ffffff;
+  border: 3px solid #000000;
+  padding: 2rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
-.stat-item {
+.card-header {
   text-align: center;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 2px solid #e0e0e0;
+}
+
+.card-header h2 {
+  font-size: 1.8rem;
+  font-weight: 600;
+  color: #000000;
+  margin: 0;
+}
+
+/* Input Sections */
+.input-section {
+  margin-bottom: 2rem;
+}
+
+.input-section label {
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #000000;
+  margin-bottom: 0.5rem;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.input-with-button input {
+  flex: 1;
   padding: 1rem;
-  border: 1px solid #e0e0e0;
-  
-  .stat-value {
-    font-size: 1.5rem;
-    font-weight: 500;
-    color: #000000;
-  }
-  
-  .stat-label {
-    font-size: 0.8rem;
-    color: #666666;
-    margin-top: 0.25rem;
-  }
-}
-
-.change-visualization {
-  width: 100%;
-  height: auto;
   border: 2px solid #e0e0e0;
-  margin-bottom: 1rem;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
 }
 
-.visualization {
-  margin-bottom: 1rem;
+.input-with-button input:focus {
+  outline: none;
+  border-color: #000000;
 }
 
-/* New styles for enhanced image comparison */
-.image-comparison-section {
-  margin-bottom: 1.5rem;
-}
-
-.before-after-grid {
+/* Coordinate and Date Inputs */
+.coordinates-row,
+.dates-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 
-.image-container {
-  text-align: center;
-  
-  h4 {
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    color: #000000;
-  }
+.coordinate-input,
+.date-input {
+  display: flex;
+  flex-direction: column;
 }
 
-.comparison-image {
-  width: 100%;
-  height: auto;
-  border: 2px solid #e0e0e0;
-  border-radius: 4px;
+.coordinate-input label,
+.date-input label {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #000000;
   margin-bottom: 0.5rem;
 }
 
-.image-date {
-  font-size: 0.8rem;
-  color: #666666;
-  margin: 0;
-}
-
-.full-comparison {
-  text-align: center;
-  margin-bottom: 1.5rem;
-  
-  h4 {
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    color: #000000;
-  }
-}
-
-.full-comparison-image {
-  width: 100%;
-  height: auto;
+.coordinate-input input,
+.date-input input {
+  padding: 1rem;
   border: 2px solid #e0e0e0;
-  border-radius: 4px;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
 }
 
-.heatmap-section {
-  text-align: center;
-  margin-bottom: 1.5rem;
-  
-  h4 {
-    font-size: 1rem;
-    font-weight: 500;
-    margin-bottom: 0.5rem;
-    color: #000000;
-  }
+.coordinate-input input:focus,
+.date-input input:focus {
+  outline: none;
+  border-color: #000000;
 }
 
-.heatmap-image {
-  width: 100%;
-  height: auto;
-  border: 2px solid #e0e0e0;
-  border-radius: 4px;
-  margin-bottom: 0.5rem;
+/* Map Section */
+.map-section {
+  margin-bottom: 2rem;
 }
 
-.heatmap-legend {
+.map-container {
+  height: 400px;
+  border: 3px solid #000000;
+  background-color: #f8f8f8;
+}
+
+/* Action Buttons */
+.action-buttons {
   display: flex;
   justify-content: center;
   gap: 1rem;
-  font-size: 0.8rem;
-  margin: 0;
+  margin-top: 2rem;
 }
 
-.legend-item {
-  padding: 0.25rem 0.5rem;
-  border-radius: 3px;
-  font-weight: 500;
-  
-  &.blue {
-    background-color: #0066cc;
-    color: white;
-  }
-  
-  &.green {
-    background-color: #00cc66;
-    color: white;
-  }
-  
-  &.red {
-    background-color: #cc0000;
-    color: white;
-  }
+.btn {
+  padding: 1rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border: 2px solid #000000;
+  background-color: #ffffff;
+  color: #000000;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.additional-stats {
-  border-top: 1px solid #e0e0e0;
-  padding-top: 1rem;
+.btn:hover:not(:disabled) {
+  background-color: #000000;
+  color: #ffffff;
 }
 
-.stat-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #f0f0f0;
-  
-  &:last-child {
-    border-bottom: none;
-  }
+.btn-primary {
+  background-color: #000000;
+  color: #ffffff;
 }
 
-.stat-name {
-  font-weight: 500;
-  color: #333333;
+.btn-primary:hover:not(:disabled) {
+  background-color: #333333;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+
+/* Results Section */
+.stats-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.stat-card {
+  text-align: center;
+  padding: 1.5rem;
+  border: 2px solid #e0e0e0;
+  background-color: #f8f8f8;
+}
+
+.stat-card.primary {
+  border-color: #000000;
+  background-color: #000000;
+  color: #ffffff;
+}
+
+.stat-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 0.5rem;
 }
 
 .stat-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+/* Image Results */
+.image-results {
+  margin-bottom: 2rem;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+}
+
+.image-item {
+  text-align: center;
+  border: 2px solid #e0e0e0;
+  padding: 1rem;
+  background-color: #ffffff;
+}
+
+.image-item h3 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #000000;
+  margin-bottom: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.result-image {
+  width: 100%;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
+  border: 2px solid #e0e0e0;
+}
+
+.no-image {
+  padding: 2rem;
+  color: #999999;
+  font-style: italic;
+  background-color: #f8f8f8;
+  border: 2px dashed #e0e0e0;
+}
+
+/* Export Section */
+.export-section {
+  text-align: center;
+  padding-top: 1.5rem;
+  border-top: 2px solid #e0e0e0;
+}
+
+.export-section h2 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  color: #000000;
+  margin-bottom: 1rem;
+}
+
+.btn-export {
+  background-color: #000000;
+  color: #ffffff;
+  padding: 1.2rem 2.5rem;
+  font-size: 1.1rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-export:hover:not(:disabled) {
+  background-color: #333333;
+}
+
+.btn-export .icon {
+  font-size: 1.2rem;
+}
+
+/* Alert Styles */
+.alert {
+  padding: 1rem;
+  margin-top: 1rem;
+  border: 2px solid;
+  text-align: center;
   font-weight: 500;
+}
+
+.alert-success {
+  background-color: #f8f8f8;
+  border-color: #000000;
   color: #000000;
 }
 
-/* Responsive adjustments */
+.alert-error {
+  background-color: #ffffff;
+  border-color: #000000;
+  color: #000000;
+}
+
+/* Loading Spinner */
+.loading {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 3px solid #e0e0e0;
+  border-radius: 50%;
+  border-top-color: #000000;
+  animation: spin 1s ease-in-out infinite;
+  margin-right: 0.5rem;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
-  .before-after-grid {
-    grid-template-columns: 1fr;
-    gap: 0.5rem;
+  .app-header h1 {
+    font-size: 2.2rem;
   }
   
-  .heatmap-legend {
+  .subtitle {
+    font-size: 1rem;
+  }
+  
+  .main-content {
+    max-width: 100%;
+    padding: 0 1rem;
+  }
+  
+     .selection-card,
+   .results-section {
+     padding: 1.5rem;
+   }
+  
+  .coordinates-row,
+  .dates-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .action-buttons {
     flex-direction: column;
-    gap: 0.5rem;
+  }
+  
+  .stats-summary {
+    grid-template-columns: 1fr;
+  }
+  
+  .image-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style> 
