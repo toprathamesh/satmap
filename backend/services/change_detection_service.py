@@ -442,50 +442,70 @@ class ChangeDetectionService:
             raise
     
     def _create_visualizations(self, before_img, after_img, change_mask, change_probs, result_id, original_size):
-        """Create comprehensive visualizations with simple, robust processing"""
+        """Create visualizations without corrupting the original images"""
         
-        # Convert PIL images to numpy arrays
+        # Convert PIL images to numpy arrays - DO NOT MODIFY THEM
         before_np = np.array(before_img)
         after_np = np.array(after_img)
-        
-        # Ensure proper data types
-        if before_np.dtype != np.uint8:
-            before_np = np.clip(before_np * 255, 0, 255).astype(np.uint8)
-        if after_np.dtype != np.uint8:
-            after_np = np.clip(after_np * 255, 0, 255).astype(np.uint8)
         
         # Resize probability map to match original image size
         change_probs_resized = cv2.resize(change_probs[1], original_size, interpolation=cv2.INTER_LINEAR)
         
-        # Create change overlay on after image
-        after_with_changes = after_np.copy()
-        
-        # Apply change highlighting
+        # Create change overlay ONLY for the highlighted version
+        after_highlighted = after_np.copy()
         change_locations = change_mask > 0
         if np.any(change_locations):
-            # Simple red overlay
-            after_with_changes[change_locations, 0] = np.minimum(
-                after_with_changes[change_locations, 0] + 100, 255)  # Add red
+            # Simple red overlay for highlighted version only
+            after_highlighted[change_locations, 0] = np.minimum(
+                after_highlighted[change_locations, 0] + 80, 255)
         
-        # Create side-by-side comparison
-        comparison_width = before_np.shape[1] * 2 + 30
-        comparison_height = before_np.shape[0] + 80
+        # IMPROVED COMPARISON VISUALIZATION - Make images larger for better viewing
+        target_size = 400  # Target size for each image in comparison
+        
+        # Resize images for comparison while maintaining aspect ratio
+        def resize_for_comparison(img, target_size):
+            h, w = img.shape[:2]
+            # Calculate scale to fit within target size
+            scale = min(target_size / h, target_size / w)
+            new_h, new_w = int(h * scale), int(w * scale)
+            return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        
+        before_resized = resize_for_comparison(before_np, target_size)
+        after_resized = resize_for_comparison(after_highlighted, target_size)
+        
+        # Create larger comparison canvas
+        comparison_width = target_size * 2 + 60  # Space for two larger images + padding
+        comparison_height = target_size + 80     # Height for larger images + labels
         comparison = np.ones((comparison_height, comparison_width, 3), dtype=np.uint8) * 255
         
-        # Add images to comparison
-        y_offset = 40
-        comparison[y_offset:y_offset+before_np.shape[0], 10:10+before_np.shape[1]] = before_np
-        comparison[y_offset:y_offset+after_np.shape[0], before_np.shape[1]+30:] = after_with_changes
+        # Calculate positions to center the images
+        y_offset = 50
+        before_x = (target_size - before_resized.shape[1]) // 2 + 15
+        after_x = target_size + (target_size - after_resized.shape[1]) // 2 + 45
         
-        # Add labels
+        # Add resized images to comparison
+        comparison[y_offset:y_offset+before_resized.shape[0], 
+                  before_x:before_x+before_resized.shape[1]] = before_resized
+        comparison[y_offset:y_offset+after_resized.shape[0], 
+                  after_x:after_x+after_resized.shape[1]] = after_resized
+        
+        # Add improved labels with better positioning
         font = cv2.FONT_HERSHEY_SIMPLEX
-        cv2.putText(comparison, 'BEFORE', (15, 30), font, 0.7, (0, 0, 0), 2)
-        cv2.putText(comparison, 'AFTER (Changes Highlighted)', (before_np.shape[1]+35, 30), font, 0.7, (0, 0, 0), 2)
+        font_scale = 0.8
+        font_thickness = 2
         
-        # Add statistics
-        change_percentage = (np.sum(change_mask > 0) / change_mask.size) * 100
-        stats_text = f'Change: {change_percentage:.2f}%'
-        cv2.putText(comparison, stats_text, (15, comparison_height-15), font, 0.6, (0, 0, 0), 1)
+        # Calculate text positions to center them above images
+        before_text = 'BEFORE'
+        after_text = 'AFTER (Changes)'
+        
+        (before_text_w, before_text_h), _ = cv2.getTextSize(before_text, font, font_scale, font_thickness)
+        (after_text_w, after_text_h), _ = cv2.getTextSize(after_text, font, font_scale, font_thickness)
+        
+        before_text_x = target_size // 2 - before_text_w // 2 + 15
+        after_text_x = target_size + target_size // 2 - after_text_w // 2 + 45
+        
+        cv2.putText(comparison, before_text, (before_text_x, 30), font, font_scale, (0, 0, 0), font_thickness)
+        cv2.putText(comparison, after_text, (after_text_x, 30), font, font_scale, (0, 0, 0), font_thickness)
         
         # Create heatmap
         heatmap = cv2.applyColorMap((change_probs_resized * 255).astype(np.uint8), cv2.COLORMAP_JET)
@@ -501,17 +521,13 @@ class ChangeDetectionService:
         heatmap_path = f'{base_path}_heatmap.png'
         change_mask_path = f'{base_path}_change_mask.png'
         
-        # Save with error handling
-        try:
-            Image.fromarray(before_np).save(before_path, 'PNG')
-            Image.fromarray(after_np).save(after_path, 'PNG')
-            Image.fromarray(after_with_changes).save(after_highlighted_path, 'PNG')
-            Image.fromarray(comparison).save(comparison_path, 'PNG')
-            Image.fromarray(heatmap_rgb).save(heatmap_path, 'PNG')
-            Image.fromarray((change_mask * 255).astype(np.uint8)).save(change_mask_path, 'PNG')
-        except Exception as e:
-            self.logger.error(f"Error saving images: {e}")
-            raise
+        # Save images - PRESERVE ORIGINALS
+        Image.fromarray(before_np).save(before_path, 'PNG')
+        Image.fromarray(after_np).save(after_path, 'PNG')  # ORIGINAL, UNMODIFIED
+        Image.fromarray(after_highlighted).save(after_highlighted_path, 'PNG')
+        Image.fromarray(comparison).save(comparison_path, 'PNG')
+        Image.fromarray(heatmap_rgb).save(heatmap_path, 'PNG')
+        Image.fromarray((change_mask * 255).astype(np.uint8)).save(change_mask_path, 'PNG')
         
         return {
             'files': {
