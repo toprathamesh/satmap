@@ -287,6 +287,19 @@ class ChangeDetectionService:
             # Calculate statistics
             statistics = self._calculate_statistics(change_mask_resized, metadata)
             
+            # CHECK FOR SIGNIFICANT CHANGE ALERT (>5%)
+            change_percentage = float(statistics.get('change_percentage', 0))
+            alert_triggered = bool(change_percentage > 5.0)  # Convert to native Python bool
+            
+            if alert_triggered:
+                self.logger.warning(f"🚨 CHANGE ALERT: {change_percentage}% change detected (threshold: 5%)")
+                alert_message = f"Significant change detected: {change_percentage}% of area changed"
+                alert_level = "HIGH" if change_percentage > 15 else "MEDIUM"
+            else:
+                self.logger.info(f"✅ Normal change level: {change_percentage}% (below 5% threshold)")
+                alert_message = None
+                alert_level = "LOW"
+            
             # Save results
             result_data = {
                 'result_id': result_id,
@@ -301,13 +314,29 @@ class ChangeDetectionService:
                     'lon': metadata.get('longitude', 0) if metadata else 0
                 },
                 'before_date': metadata.get('before_date', '') if metadata else '',
-                'after_date': metadata.get('after_date', '') if metadata else ''
+                'after_date': metadata.get('after_date', '') if metadata else '',
+                # ALERT SYSTEM
+                'alert': {
+                    'triggered': alert_triggered,
+                    'level': alert_level,
+                    'message': alert_message,
+                    'threshold': 5.0,
+                    'change_percentage': float(change_percentage)  # Ensure JSON serializable
+                }
             }
             
             # Save metadata
             metadata_path = f'images/results/{result_id}_metadata.json'
             with open(metadata_path, 'w') as f:
                 json.dump(result_data, f, indent=2)
+            
+            # Test JSON serialization to catch any issues early
+            try:
+                json.dumps(result_data)
+                self.logger.info(f"✅ Result data is JSON serializable")
+            except Exception as json_error:
+                self.logger.error(f"❌ JSON serialization error: {json_error}")
+                raise
             
             return result_data
             
@@ -354,6 +383,9 @@ class ChangeDetectionService:
                 'total_survey_area_km2': statistics.get('total_survey_area_km2', 1.0)
             })
             
+            # No alert for no change
+            change_percentage = 0.0
+            
             # Save results
             result_data = {
                 'result_id': result_id,
@@ -368,7 +400,15 @@ class ChangeDetectionService:
                     'lon': metadata.get('longitude', 0) if metadata else 0
                 },
                 'before_date': metadata.get('before_date', '') if metadata else '',
-                'after_date': metadata.get('after_date', '') if metadata else ''
+                'after_date': metadata.get('after_date', '') if metadata else '',
+                # ALERT SYSTEM
+                'alert': {
+                    'triggered': False,
+                    'level': 'LOW',
+                    'message': None,
+                    'threshold': 5.0,
+                    'change_percentage': 0.0
+                }
             }
             
             # Save metadata
@@ -426,7 +466,15 @@ class ChangeDetectionService:
                 },
                 'before_date': metadata.get('before_date', '') if metadata else '',
                 'after_date': metadata.get('after_date', '') if metadata else '',
-                'instant_result': True  # Flag to indicate this was instant
+                'instant_result': True,  # Flag to indicate this was instant
+                # ALERT SYSTEM
+                'alert': {
+                    'triggered': False,
+                    'level': 'LOW',
+                    'message': None,
+                    'threshold': 5.0,
+                    'change_percentage': 0.0
+                }
             }
             
             # Save minimal metadata
@@ -542,9 +590,9 @@ class ChangeDetectionService:
         }
     
     def _calculate_statistics(self, change_mask, metadata=None):
-        """Calculate comprehensive change detection statistics"""
-        total_pixels = change_mask.size
-        changed_pixels = np.sum(change_mask > 0)
+        """Calculate comprehensive change detection statistics with JSON-serializable values"""
+        total_pixels = int(change_mask.size)  # Convert to native Python int
+        changed_pixels = int(np.sum(change_mask > 0))  # Convert to native Python int
         
         # Calculate areas (default 10m pixel resolution for Sentinel-2)
         pixel_area_m2 = 100  # 10m x 10m
@@ -563,16 +611,17 @@ class ChangeDetectionService:
         region_sizes = []
         if num_features > 0:
             for i in range(1, num_features + 1):
-                region_size = np.sum(labeled_array == i) * pixel_area_m2 / 1000000
+                region_size = float(np.sum(labeled_array == i)) * pixel_area_m2 / 1000000
                 region_sizes.append(region_size)
         
-        largest_region_km2 = max(region_sizes) if region_sizes else 0
+        largest_region_km2 = max(region_sizes) if region_sizes else 0.0
         
+        # Convert all values to native Python types for JSON serialization
         return {
-            'change_percentage': round((changed_pixels / total_pixels) * 100, 2),
-            'changed_area_km2': round(changed_area_km2, 4),
-            'total_area_km2': round(total_area_km2, 4),
-            'num_change_regions': num_features,
-            'largest_region_km2': round(largest_region_km2, 4),
-            'average_region_size_km2': round(np.mean(region_sizes), 4) if region_sizes else 0
+            'change_percentage': float(round((changed_pixels / total_pixels) * 100, 2)),
+            'changed_area_km2': float(round(changed_area_km2, 4)),
+            'total_area_km2': float(round(total_area_km2, 4)),
+            'num_change_regions': int(num_features),  # Convert to native Python int
+            'largest_region_km2': float(round(largest_region_km2, 4)),
+            'average_region_size_km2': float(round(np.mean(region_sizes), 4)) if region_sizes else 0.0
         } 

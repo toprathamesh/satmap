@@ -59,20 +59,22 @@
             <!-- Date Selection -->
             <div class="dates-row">
               <div class="date-input">
-                <label for="before-date">Before Date</label>
+                <label for="before-date">Before Month/Year</label>
                 <input
                   id="before-date"
                   v-model="dates.before"
-                  type="date"
+                  type="month"
+                  min="2016-01"
                   :max="dates.after"
                 />
               </div>
               <div class="date-input">
-                <label for="after-date">After Date</label>
+                <label for="after-date">After Month/Year</label>
                 <input
                   id="after-date"
                   v-model="dates.after"
-                  type="date"
+                  type="month"
+                  min="2016-01"
                   :min="dates.before"
                   :max="maxDate"
                 />
@@ -109,6 +111,23 @@
             <div class="stat-card">
               <div class="stat-label">Model Used</div>
               <div class="stat-value">{{ results.model || 'Lightweight Siamese U-Net' }}</div>
+            </div>
+          </div>
+          
+          <!-- Change Alert Display -->
+          <div v-if="results.alert && results.alert.triggered" class="alert alert-warning change-alert">
+            <div class="alert-header">
+              <span class="alert-icon">🚨</span>
+              <span class="alert-title">Change Alert</span>
+              <span class="alert-level" :class="'level-' + (results.alert.level || 'medium').toLowerCase()">
+                {{ results.alert.level }}
+              </span>
+            </div>
+            <div class="alert-message">
+              {{ results.alert.message }}
+            </div>
+            <div class="alert-details">
+              Threshold: {{ results.alert.threshold }}% | Detected: {{ results.alert.change_percentage.toFixed(1) }}%
             </div>
           </div>
           
@@ -207,7 +226,7 @@ export default {
   },
   computed: {
     maxDate() {
-      return new Date().toISOString().split('T')[0]
+      return new Date().toISOString().substring(0, 7) // Returns YYYY-MM format
     },
     canDetectChanges() {
       return (
@@ -350,11 +369,15 @@ export default {
       this.changeResults = null
       
       try {
+        // Convert month format (YYYY-MM) to full date format (YYYY-MM-01) for backend
+        const beforeDate = this.dates.before.includes('-') ? `${this.dates.before}-01` : this.dates.before
+        const afterDate = this.dates.after.includes('-') ? `${this.dates.after}-01` : this.dates.after
+        
         const response = await axios.post(`${this.apiBaseUrl}/api/change-detection`, {
           latitude: this.coordinates.lat,
           longitude: this.coordinates.lon,
-          before_date: this.dates.before,
-          after_date: this.dates.after
+          before_date: beforeDate,
+          after_date: afterDate
         })
         
         if (response.data.success) {
@@ -431,11 +454,17 @@ export default {
     
     setDefaultDates() {
       const today = new Date()
-      const oneYearAgo = new Date()
-      oneYearAgo.setFullYear(today.getFullYear() - 1)
+      const sixMonthsAgo = new Date()
+      sixMonthsAgo.setMonth(today.getMonth() - 6)
       
-      this.dates.after = today.toISOString().split('T')[0]
-      this.dates.before = oneYearAgo.toISOString().split('T')[0]
+      // Ensure we don't go before 2016-01
+      const minDate = new Date(2016, 0) // January 2016
+      if (sixMonthsAgo < minDate) {
+        sixMonthsAgo.setTime(minDate.getTime())
+      }
+      
+      this.dates.after = today.toISOString().substring(0, 7) // YYYY-MM format
+      this.dates.before = sixMonthsAgo.toISOString().substring(0, 7) // YYYY-MM format
     },
     
     formatDate(dateString) {
@@ -735,6 +764,70 @@ export default {
   margin-top: 1rem;
   border: 2px solid;
   text-align: center;
+  font-weight: 500;
+}
+
+/* Change Alert Specific Styles */
+.change-alert {
+  background-color: #fff3cd;
+  border-color: #ffc107;
+  color: #856404;
+  text-align: left;
+  margin: 1.5rem 0;
+  border-radius: 8px;
+}
+
+.alert-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.alert-icon {
+  font-size: 1.2rem;
+}
+
+.alert-title {
+  font-size: 1.1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.alert-level {
+  margin-left: auto;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.level-high {
+  background-color: #dc3545;
+  color: white;
+}
+
+.level-medium {
+  background-color: #ffc107;
+  color: #856404;
+}
+
+.level-low {
+  background-color: #28a745;
+  color: white;
+}
+
+.alert-message {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: #856404;
+}
+
+.alert-details {
+  font-size: 0.9rem;
+  color: #6c757d;
   font-weight: 500;
 }
 
